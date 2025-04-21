@@ -36,3 +36,7 @@ Thumbs.db
 
 # Ignore IDE-specific build outputs
 /.idea/.idea_modules/
+
+# videos/clips
+/downloads
+/clips

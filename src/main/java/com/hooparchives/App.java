@@ -25,5 +25,21 @@ public class App {
 		// "start", start,
 		// "end", end));
 		// });
+
+		app.get("/upload", ctx -> {
+			// Extract the 'filename' query parameter from the request
+			String filename = ctx.queryParam("filename");
+
+			if (filename == null) {
+				ctx.status(400).result("Filename is required.");
+				return;
+			}
+
+			// Create a Clipper instance and call downloadFile with the filename
+			Clipper clipper = new Clipper();
+			clipper.downloadFile(filename);
+
+			ctx.status(200).result("Download initiated for file: " + filename);
+		});
 	}
 }
