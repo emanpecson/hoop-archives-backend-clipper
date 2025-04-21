@@ -45,16 +45,22 @@ public class App {
 			ctx.status(200).result("Download initiated for file: " + filename);
 		});
 
-		app.get("/trim", ctx -> {
-			String start = ctx.queryParam("start-time");
-			String duration = ctx.queryParam("duration");
+		app.post("/trim", ctx -> {
+			TrimRequest req = ctx.bodyAsClass(TrimRequest.class);
 
-			String TEMP_VIDEO = "IMG_6580.MOV";
+			// String filename = ctx.queryParam("filename");
+			// String start = ctx.queryParam("start-time");
+			// String duration = ctx.queryParam("duration");
 
-			System.out.println("Trim request on " + TEMP_VIDEO + start + duration);
+			// List<TrimRequest.Clip> clips = req.clips;
+			// String filename = req.filename;
+
+			// String TEMP_VIDEO = "IMG_6580.MOV";
+
+			// System.out.println("Trim request on " + TEMP_VIDEO + start + duration);
 
 			Clipper clipper = new Clipper();
-			clipper.trimVideo(TEMP_VIDEO, start, duration);
+			clipper.trimVideo(req);
 
 			ctx.status(200).result("just to return");
 		});
