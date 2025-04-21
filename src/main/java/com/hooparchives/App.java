@@ -10,7 +10,10 @@ public class App {
 		}).start(7070);
 
 		// Health check
-		app.get("/", ctx -> ctx.result("Hello world!"));
+		app.get("/", ctx -> {
+			System.out.println("Welcome hit");
+			ctx.result("Hello world!");
+		});
 
 		// Example /clip endpoint
 		// app.post("/clip", ctx -> {
@@ -26,7 +29,7 @@ public class App {
 		// "end", end));
 		// });
 
-		app.get("/upload", ctx -> {
+		app.get("/download", ctx -> {
 			// Extract the 'filename' query parameter from the request
 			String filename = ctx.queryParam("filename");
 
@@ -40,6 +43,20 @@ public class App {
 			clipper.downloadFile(filename);
 
 			ctx.status(200).result("Download initiated for file: " + filename);
+		});
+
+		app.get("/trim", ctx -> {
+			String start = ctx.queryParam("start-time");
+			String duration = ctx.queryParam("duration");
+
+			String TEMP_VIDEO = "IMG_6580.MOV";
+
+			System.out.println("Trim request on " + TEMP_VIDEO + start + duration);
+
+			Clipper clipper = new Clipper();
+			clipper.trimVideo(TEMP_VIDEO, start, duration);
+
+			ctx.status(200).result("just to return");
 		});
 	}
 }
