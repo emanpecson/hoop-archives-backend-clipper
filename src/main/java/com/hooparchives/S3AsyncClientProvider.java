@@ -8,7 +8,7 @@ public class S3AsyncClientProvider {
 	private static final S3AsyncClient s3AsyncClient = buildS3AsyncClient();
 
 	private static S3AsyncClient buildS3AsyncClient() {
-		return S3AsyncClient.builder()
+		return S3AsyncClient.crtBuilder()
 				.region(Region.US_WEST_2)
 				.credentialsProvider(DefaultCredentialsProvider.create())
 				.build();

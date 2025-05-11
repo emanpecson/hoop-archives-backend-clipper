@@ -3,8 +3,7 @@ package com.hooparchives;
 import java.util.List;
 
 public class TrimRequest {
-	public String title;
-	public String filename;
+	public String key;
 	public List<Clip> clips;
 
 	public static class Clip {

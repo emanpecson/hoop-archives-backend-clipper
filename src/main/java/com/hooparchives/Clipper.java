@@ -5,19 +5,12 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import com.hooparchives.TrimRequest.Clip;
 
 import software.amazon.awssdk.http.SdkHttpResponse;
-import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
-import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
-import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
-import software.amazon.awssdk.services.dynamodb.model.PutItemResponse;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectResponse;
@@ -32,12 +25,9 @@ import software.amazon.awssdk.transfer.s3.model.UploadFileRequest;
 public class Clipper {
 	private final S3TransferManager s3TransferManager;
 	private final S3AsyncClient s3Client;
-	private final DynamoDbClient ddbClient;
 
 	private final String region = "us-west-2";
 	private final String bucket = "hoop-archives-uploads";
-	private final String gamesTable = "Games";
-	private final String gameClipsTable = "GameClips";
 
 	private final String downloadsPathname = "downloads";
 	private final String clipsPathname = "clips";
@@ -45,8 +35,6 @@ public class Clipper {
 	public Clipper() {
 		this.s3TransferManager = S3TransferManagerProvider.getTransferManager();
 		this.s3Client = S3AsyncClientProvider.getClient();
-		this.ddbClient = DyanmoDbClientProvider.getClient();
-
 	}
 
 	/**
@@ -60,47 +48,50 @@ public class Clipper {
 	 * @throws IOException
 	 */
 	public ArrayList<String> handleTrimRequests(TrimRequest req) throws Exception, IOException {
-		String gameId = "";
+		System.out.println("Entering trim request");
 		ArrayList<String> clipUrls = new ArrayList<>();
 
 		// download video
-		Path downloadsPath = Paths.get(this.downloadsPathname, req.filename);
-		this.downloadFile(req.filename, downloadsPath);
-
-		// create a game to link with all clips
-		gameId = this.ddbCreateGame(req.title);
+		System.out.println("Downloading video");
+		Path downloadsPath = Paths.get(this.downloadsPathname, req.key);
+		this.downloadFile(downloadsPath, req.key);
 
 		// process clips
 		for (int i = 0; i < req.clips.size(); i++) {
 			Clip clip = req.clips.get(i);
-			Integer dotIndex = req.filename.indexOf(".");
-			String clipName = req.filename.substring(0, dotIndex) + "_" + i + req.filename.substring(dotIndex);
+			Integer dotIndex = req.key.indexOf(".");
+			String ext = req.key.substring(dotIndex);
+			String clipName = req.key.substring(0, dotIndex) + "_" + i + ext;
+
+			System.out.println("Processing " + clipName);
 
 			Path clipOutputPath = Paths.get(this.clipsPathname, clipName);
 
 			this.trimClip(downloadsPath, clipOutputPath, clip, clipName);
 			String clipUrl = this.s3UploadClip(clipOutputPath, clipName);
-			this.ddbCreateClip(gameId, clipName, clipUrl);
 
 			clipUrls.add(clipUrl);
 		}
 
 		// remove original video from downloads + s3 bucket
-		this.s3RemoveVideo(req.filename);
-		this.deleteDownload(req.filename);
+		System.out.println("Clips processed, cleaning up...");
+		this.s3RemoveVideo(req.key);
+		this.deleteDownload(req.key);
+		this.deleteClips();
 
+		System.out.println("Exiting trim request");
 		return clipUrls;
 	}
 
 	/**
 	 * Downloads a video from S3 and stores it into ~/downloads/*
 	 * 
-	 * @param filename        Key of stored item
 	 * @param destinationPath Downloads folder with the filename
+	 * @param key             Key of stored item
 	 */
-	private void downloadFile(String filename, Path destinationPath) throws Exception {
+	private void downloadFile(Path destinationPath, String key) throws Exception {
 		DownloadFileRequest req = DownloadFileRequest.builder()
-				.getObjectRequest(b -> b.bucket(this.bucket).key(filename))
+				.getObjectRequest(b -> b.bucket(this.bucket).key(key))
 				.destination(destinationPath)
 				.build();
 
@@ -147,13 +138,13 @@ public class Clipper {
 	 * Upload clip to S3 "Uploads" bucket
 	 * 
 	 * @param clipPath Path to file to upload
-	 * @param filename Key of item to store
+	 * @param key      Key of item to store
 	 * @return Clip url
 	 * @throws Exception
 	 */
-	private String s3UploadClip(Path clipPath, String filename) throws Exception {
+	private String s3UploadClip(Path clipPath, String key) throws Exception {
 		UploadFileRequest req = UploadFileRequest.builder()
-				.putObjectRequest(b -> b.bucket(this.bucket).key(filename))
+				.putObjectRequest(b -> b.bucket(this.bucket).key(key))
 				.source(clipPath)
 				.build();
 
@@ -165,85 +156,29 @@ public class Clipper {
 			throw new Exception("Invalid S3 put request");
 		}
 
-		String url = "https://" + this.bucket + ".s3." + this.region + ".amazonaws.com/" + filename;
+		String url = "https://" + this.bucket + ".s3." + this.region + ".amazonaws.com/" + key;
 		System.out.println("Successful put request: " + url);
 
 		return url;
 	}
 
 	/**
-	 * Create Clip object in "GameClips" DynamoDB table
-	 * 
-	 * @param gameId   Parition key
-	 * @param clipName Sort key: gameId + index
-	 * @param clipUrl  S3 URL to reference
-	 * @throws Exception
-	 */
-	private void ddbCreateClip(String gameId, String clipName, String clipUrl) throws Exception {
-
-		HashMap<String, AttributeValue> obj = new HashMap<>();
-		obj.put("gameId", AttributeValue.builder().s(gameId).build());
-		obj.put("clipId", AttributeValue.builder().s(clipName).build());
-		obj.put("clipUrl", AttributeValue.builder().s(clipUrl).build());
-
-		PutItemRequest req = PutItemRequest.builder()
-				.tableName(this.gameClipsTable)
-				.item(null)
-				.build();
-
-		PutItemResponse res = this.ddbClient.putItem(req);
-
-		if (!res.sdkHttpResponse().isSuccessful()) {
-			throw new Exception("Error creating clip in DDB: " + clipName);
-		}
-	}
-
-	/**
-	 * Create Game object in "Games" DynamoDB table
-	 * 
-	 * @param title Name of game
-	 * @return Game id
-	 * @throws Exception
-	 */
-	private String ddbCreateGame(String title) throws Exception {
-		String uniqueGameId = UUID.randomUUID().toString();
-
-		HashMap<String, AttributeValue> obj = new HashMap<>();
-		obj.put("gameId", AttributeValue.builder().s(uniqueGameId).build());
-		obj.put("title", AttributeValue.builder().s(title).build());
-		obj.put("date", AttributeValue.builder().s(Instant.now().toString()).build());
-
-		PutItemRequest req = PutItemRequest.builder()
-				.tableName(this.gamesTable)
-				.item(obj)
-				.build();
-
-		PutItemResponse res = this.ddbClient.putItem(req);
-
-		if (!res.sdkHttpResponse().isSuccessful()) {
-			throw new Exception("Error creating game in DDB: " + title);
-		}
-
-		return uniqueGameId;
-	}
-
-	/**
 	 * Delete file object from S3 bucket. After creating the clips, the video
 	 * is no longer necessary. As we'll be able to reference a game by its clips.
 	 * 
-	 * @param filename Key of stored item to remove
+	 * @param key Key of stored item to remove
 	 * @throws RuntimeException
 	 */
-	private void s3RemoveVideo(String filename) throws RuntimeException {
+	private void s3RemoveVideo(String key) throws RuntimeException {
 		DeleteObjectRequest req = DeleteObjectRequest.builder()
 				.bucket(this.bucket)
-				.key(filename)
+				.key(key)
 				.build();
 
 		CompletableFuture<DeleteObjectResponse> res = this.s3Client.deleteObject(req);
 		res.whenComplete((deleteRes, ex) -> {
 			if (deleteRes != null) {
-				System.out.println("Deleted S3 object: " + filename);
+				System.out.println("Deleted S3 object: " + key);
 			} else {
 				throw new RuntimeException("S3 exception occurred during delete");
 			}
@@ -265,6 +200,26 @@ public class Clipper {
 			System.out.println("File not found: " + path.toString());
 		} catch (Exception e) {
 			System.out.println("Error deleting " + filename + ": " + e.getMessage());
+		}
+	}
+
+	public void deleteClips() {
+		Path path = Paths.get(this.clipsPathname);
+
+		try {
+			if (Files.exists(path) && Files.isDirectory(path)) {
+				Files.list(path)
+						.forEach(file -> {
+							try {
+								Files.deleteIfExists(file);
+								System.out.println("Deleted: " + file);
+							} catch (IOException e) {
+								System.out.println("Failed to delete: " + file + " - " + e.getMessage());
+							}
+						});
+			}
+		} catch (IOException e) {
+			System.out.println("Error cleaning clip folder: " + e.getMessage());
 		}
 	}
 }

@@ -90,11 +90,10 @@
 			<version>2.25.14</version>
 		</dependency>
 
-		<!-- aws ddb -->
 		<dependency>
-			<groupId>software.amazon.awssdk</groupId>
-			<artifactId>dynamodb</artifactId>
-			<version>2.25.14</version> <!-- Or latest available -->
+			<groupId>software.amazon.awssdk.crt</groupId>
+			<artifactId>aws-crt</artifactId>
+			<version>0.29.10</version>
 		</dependency>
 
 		<!-- handling json body requests -->
