@@ -32,6 +32,8 @@ public class Clipper {
 	private final String downloadsPathname = "downloads";
 	private final String clipsPathname = "clips";
 
+	private final String thumbnailFilenamePrefix = "THUMBNAIL_";
+
 	public Clipper() {
 		this.s3TransferManager = S3TransferManagerProvider.getTransferManager();
 		this.s3Client = S3AsyncClientProvider.getClient();
@@ -43,13 +45,14 @@ public class Clipper {
 	 * the GameClips table and are grouped by the Games table.
 	 * 
 	 * @param req Trim request
-	 * @return Clip urls
+	 * @return Trim response
 	 * @throws Exception
 	 * @throws IOException
 	 */
-	public ArrayList<String> handleTrimRequests(TrimRequest req) throws Exception, IOException {
+	public TrimResponse handleTrimRequests(TrimRequest req) throws Exception, IOException {
 		System.out.println("Entering trim request");
 		ArrayList<String> clipUrls = new ArrayList<>();
+		String thumbnailUrl = "";
 
 		// download video
 		System.out.println("Downloading video");
@@ -68,19 +71,26 @@ public class Clipper {
 			Path clipOutputPath = Paths.get(this.clipsPathname, clipName);
 
 			this.trimClip(downloadsPath, clipOutputPath, clip, clipName);
-			String clipUrl = this.s3UploadClip(clipOutputPath, clipName);
+			String clipUrl = this.s3Upload(clipOutputPath, clipName);
 
 			clipUrls.add(clipUrl);
 		}
+
+		// create thumbnail
+		String baseName = req.key.replaceFirst("[.][^.]+$", ""); // remove extension
+		String thumbnailFilename = this.thumbnailFilenamePrefix + baseName + ".jpg";
+		Path thumbnailPath = createThumbnail(req.key, thumbnailFilename);
+		thumbnailUrl = this.s3Upload(thumbnailPath, thumbnailFilename);
 
 		// remove original video from downloads + s3 bucket
 		System.out.println("Clips processed, cleaning up...");
 		this.s3RemoveVideo(req.key);
 		this.deleteDownload(req.key);
+		this.deleteDownload(thumbnailFilename);
 		this.deleteClips();
 
 		System.out.println("Exiting trim request");
-		return clipUrls;
+		return new TrimResponse(clipUrls, thumbnailUrl);
 	}
 
 	/**
@@ -125,7 +135,6 @@ public class Clipper {
 				"-c", "copy", // copy codecs (w/o re-encoding)
 				clipOutputPath.toString());
 
-		System.out.println("Processing " + clipName + "...");
 		Process process = processBuilder.start();
 		int exitCode = process.waitFor();
 
@@ -142,7 +151,7 @@ public class Clipper {
 	 * @return Clip url
 	 * @throws Exception
 	 */
-	private String s3UploadClip(Path clipPath, String key) throws Exception {
+	private String s3Upload(Path clipPath, String key) throws Exception {
 		UploadFileRequest req = UploadFileRequest.builder()
 				.putObjectRequest(b -> b.bucket(this.bucket).key(key))
 				.source(clipPath)
@@ -221,5 +230,36 @@ public class Clipper {
 		} catch (IOException e) {
 			System.out.println("Error cleaning clip folder: " + e.getMessage());
 		}
+	}
+
+	/**
+	 * Create thumbnail from first frame of video
+	 * 
+	 * @param videoFilename     Video to source
+	 * @param thumbnailFilename Name of thumbnail to create
+	 * @return Path to thumbnail image
+	 * @throws Exception
+	 */
+	public Path createThumbnail(String videoFilename, String thumbnailFilename) throws Exception {
+		Path videoPath = Paths.get(this.downloadsPathname, videoFilename);
+		Path thumbnailPath = Paths.get(this.downloadsPathname, thumbnailFilename);
+		String startOfVideo = "00:00:01";
+
+		ProcessBuilder processBuilder = new ProcessBuilder(
+				"ffmpeg",
+				"-ss", startOfVideo,
+				"-i", videoPath.toString(),
+				"-frames:v", "1",
+				"-q:v", "2",
+				thumbnailPath.toString());
+
+		Process process = processBuilder.start();
+		int exitCode = process.waitFor();
+
+		if (exitCode != 0) {
+			throw new Exception("Process failed with exit code: " + exitCode);
+		}
+
+		return thumbnailPath;
 	}
 }

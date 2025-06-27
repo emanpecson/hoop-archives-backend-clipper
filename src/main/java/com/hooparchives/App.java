@@ -1,6 +1,5 @@
 package com.hooparchives;
 
-import java.util.ArrayList;
 import java.util.Map;
 
 import io.javalin.Javalin;
@@ -29,9 +28,9 @@ public class App {
 			try {
 				TrimRequest req = ctx.bodyAsClass(TrimRequest.class);
 				Clipper clipper = new Clipper();
-				ArrayList<String> clipUrls = clipper.handleTrimRequests(req);
+				TrimResponse res = clipper.handleTrimRequests(req);
 
-				ctx.status(200).json(Map.of("data", clipUrls));
+				ctx.status(200).json(Map.of("data", res));
 			} catch (Exception e) {
 				ctx.status(500).json(Map.of("error", e.getMessage()));
 			}
