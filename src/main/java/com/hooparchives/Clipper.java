@@ -8,6 +8,8 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 
+import com.amazonaws.services.lambda.runtime.RequestHandler;
+import com.amazonaws.services.lambda.runtime.Context;
 import com.hooparchives.TrimRequest.Clip;
 
 import software.amazon.awssdk.http.SdkHttpResponse;
@@ -22,7 +24,7 @@ import software.amazon.awssdk.transfer.s3.model.FileDownload;
 import software.amazon.awssdk.transfer.s3.model.FileUpload;
 import software.amazon.awssdk.transfer.s3.model.UploadFileRequest;
 
-public class Clipper {
+public class Clipper implements RequestHandler<TrimRequest, TrimResponse> {
 	private final S3TransferManager s3TransferManager;
 	private final S3AsyncClient s3Client;
 
@@ -40,57 +42,62 @@ public class Clipper {
 	}
 
 	/**
-	 * Entry-point function that downloads the targeted video from S3 and creates
-	 * clips to be uploaded into S3. These clips are then created individually into
-	 * the GameClips table and are grouped by the Games table.
+	 * Entry-point lambda function that downloads the targeted video from S3 and
+	 * creates clips to be uploaded into S3. These clips are then created
+	 * individually into the GameClips table and are grouped by the Games table.
 	 * 
 	 * @param req Trim request
 	 * @return Trim response
 	 * @throws Exception
 	 * @throws IOException
 	 */
-	public TrimResponse handleTrimRequests(TrimRequest req) throws Exception, IOException {
+	public TrimResponse handleRequest(TrimRequest req, Context context) {
 		System.out.println("Entering trim request");
 		ArrayList<String> clipUrls = new ArrayList<>();
 		String thumbnailUrl = "";
 
-		// download video
-		System.out.println("Downloading video");
-		Path downloadsPath = Paths.get(this.downloadsPathname, req.key);
-		this.downloadFile(downloadsPath, req.key);
+		try {
+			// download video
+			System.out.println("Downloading video");
+			Path downloadsPath = Paths.get(this.downloadsPathname, req.key);
+			this.downloadFile(downloadsPath, req.key);
 
-		// process clips
-		for (int i = 0; i < req.clips.size(); i++) {
-			Clip clip = req.clips.get(i);
-			Integer dotIndex = req.key.indexOf(".");
-			String ext = req.key.substring(dotIndex);
-			String clipName = req.key.substring(0, dotIndex) + "_" + i + ext;
+			// process clips
+			for (int i = 0; i < req.clips.size(); i++) {
+				Clip clip = req.clips.get(i);
+				Integer dotIndex = req.key.indexOf(".");
+				String ext = req.key.substring(dotIndex);
+				String clipName = req.key.substring(0, dotIndex) + "_" + i + ext;
 
-			System.out.println("Processing " + clipName);
+				System.out.println("Processing " + clipName);
 
-			Path clipOutputPath = Paths.get(this.clipsPathname, clipName);
+				Path clipOutputPath = Paths.get(this.clipsPathname, clipName);
 
-			this.trimClip(downloadsPath, clipOutputPath, clip, clipName);
-			String clipUrl = this.s3Upload(clipOutputPath, clipName);
+				this.trimClip(downloadsPath, clipOutputPath, clip, clipName);
+				String clipUrl = this.s3Upload(clipOutputPath, clipName);
 
-			clipUrls.add(clipUrl);
+				clipUrls.add(clipUrl);
+			}
+
+			// create thumbnail
+			String baseName = req.key.replaceFirst("[.][^.]+$", ""); // remove extension
+			String thumbnailFilename = this.thumbnailFilenamePrefix + baseName + ".jpg";
+			Path thumbnailPath = createThumbnail(req.key, thumbnailFilename);
+			thumbnailUrl = this.s3Upload(thumbnailPath, thumbnailFilename);
+
+			// remove original video from downloads + s3 bucket
+			System.out.println("Clips processed, cleaning up...");
+			this.s3RemoveVideo(req.key);
+			this.deleteDownload(req.key);
+			this.deleteDownload(thumbnailFilename);
+			this.deleteClips();
+
+			System.out.println("Exiting trim request");
+			return new TrimResponse(clipUrls, thumbnailUrl);
+		} catch (Exception error) {
+			context.getLogger().log(error.getMessage());
+			return new TrimResponse(error.getMessage());
 		}
-
-		// create thumbnail
-		String baseName = req.key.replaceFirst("[.][^.]+$", ""); // remove extension
-		String thumbnailFilename = this.thumbnailFilenamePrefix + baseName + ".jpg";
-		Path thumbnailPath = createThumbnail(req.key, thumbnailFilename);
-		thumbnailUrl = this.s3Upload(thumbnailPath, thumbnailFilename);
-
-		// remove original video from downloads + s3 bucket
-		System.out.println("Clips processed, cleaning up...");
-		this.s3RemoveVideo(req.key);
-		this.deleteDownload(req.key);
-		this.deleteDownload(thumbnailFilename);
-		this.deleteClips();
-
-		System.out.println("Exiting trim request");
-		return new TrimResponse(clipUrls, thumbnailUrl);
 	}
 
 	/**
@@ -126,7 +133,7 @@ public class Clipper {
 	 * @throws Exception
 	 */
 	private void trimClip(Path videoInputPath, Path clipOutputPath, Clip clip, String clipName)
-			throws IOException, InterruptedException, Exception {
+			throws InterruptedException, Exception {
 		ProcessBuilder processBuilder = new ProcessBuilder(
 				"ffmpeg",
 				"-i", videoInputPath.toString(),
