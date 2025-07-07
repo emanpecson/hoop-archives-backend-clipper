@@ -2,7 +2,7 @@ package com.hooparchives;
 
 import java.util.List;
 
-public class TrimRequest {
+public class UploadRequest {
 	public String key;
 	public List<Clip> clips;
 
