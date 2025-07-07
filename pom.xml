@@ -4,13 +4,14 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>com.hooparchives</groupId>
-	<artifactId>backend-clipper</artifactId>
+	<artifactId>clipper-lambda</artifactId>
 	<packaging>jar</packaging>
 	<version>1.0-SNAPSHOT</version>
-	<name>backend-clipper</name>
+	<name>clipper-lambda</name>
 	<url>http://maven.apache.org</url>
 
 	<build>
+		<finalName>clipper-lambda</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -19,33 +20,30 @@
 				<configuration>
 					<archive>
 						<manifest>
-							<mainClass>com.hooparchives.App</mainClass>
+							<mainClass>com.hooparchives.Clipper</mainClass>
 						</manifest>
 					</archive>
 				</configuration>
 			</plugin>
 
-			<!-- Maven Assembly Plugin for Fat JAR -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-assembly-plugin</artifactId>
-				<version>3.3.0</version>
-				<configuration>
-					<archive>
-						<manifest>
-							<mainClass>com.hooparchives.App</mainClass>
-						</manifest>
-					</archive>
-					<descriptorRefs>
-						<descriptorRef>jar-with-dependencies</descriptorRef>
-					</descriptorRefs>
-				</configuration>
+				<artifactId>maven-shade-plugin</artifactId>
+				<version>3.5.0</version>
 				<executions>
 					<execution>
 						<phase>package</phase>
 						<goals>
-							<goal>single</goal>
+							<goal>shade</goal>
 						</goals>
+						<configuration>
+							<transformers>
+								<transformer
+									implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+									<mainClass>com.hooparchives.Clipper</mainClass>
+								</transformer>
+							</transformers>
+						</configuration>
 					</execution>
 				</executions>
 			</plugin>
