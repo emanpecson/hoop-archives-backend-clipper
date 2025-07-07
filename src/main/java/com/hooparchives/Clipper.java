@@ -26,8 +26,8 @@ public class Clipper implements RequestHandler<TrimRequest, TrimResponse> {
 	private final S3TransferManager s3TransferManager;
 	private final S3AsyncClient s3Client;
 
-	private final String region = "us-west-2";
-	private final String bucket = "hoop-archives-uploads";
+	private final String region = System.getenv("AWS_REGION");
+	private final String bucket = System.getenv("AWS_S3_BUCKET_NAME");
 
 	private final String downloadsPathname = "/tmp/downloads";
 	private final String clipsPathname = "/tmp/clips";
