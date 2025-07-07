@@ -6,7 +6,6 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.concurrent.CompletableFuture;
 
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.Context;
@@ -15,7 +14,6 @@ import com.hooparchives.TrimRequest.Clip;
 import software.amazon.awssdk.http.SdkHttpResponse;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.DeleteObjectResponse;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 import software.amazon.awssdk.transfer.s3.model.CompletedFileDownload;
 import software.amazon.awssdk.transfer.s3.model.CompletedFileUpload;
@@ -31,8 +29,8 @@ public class Clipper implements RequestHandler<TrimRequest, TrimResponse> {
 	private final String region = "us-west-2";
 	private final String bucket = "hoop-archives-uploads";
 
-	private final String downloadsPathname = "downloads";
-	private final String clipsPathname = "clips";
+	private final String downloadsPathname = "/tmp/downloads";
+	private final String clipsPathname = "/tmp/clips";
 
 	private final String thumbnailFilenamePrefix = "THUMBNAIL_";
 
@@ -57,6 +55,10 @@ public class Clipper implements RequestHandler<TrimRequest, TrimResponse> {
 		String thumbnailUrl = "";
 
 		try {
+			// ensure `/tmp/...` folders are created
+			Files.createDirectories(Paths.get(this.downloadsPathname));
+			Files.createDirectories(Paths.get(this.clipsPathname));
+
 			// download video
 			System.out.println("Downloading video");
 			Path downloadsPath = Paths.get(this.downloadsPathname, req.key);
@@ -101,7 +103,7 @@ public class Clipper implements RequestHandler<TrimRequest, TrimResponse> {
 	}
 
 	/**
-	 * Downloads a video from S3 and stores it into ~/downloads/*
+	 * Downloads a video from S3 and stores it into ~/tmp/downloads/*
 	 * 
 	 * @param destinationPath Downloads folder with the filename
 	 * @param key             Key of stored item
@@ -191,14 +193,8 @@ public class Clipper implements RequestHandler<TrimRequest, TrimResponse> {
 				.key(key)
 				.build();
 
-		CompletableFuture<DeleteObjectResponse> res = this.s3Client.deleteObject(req);
-		res.whenComplete((deleteRes, ex) -> {
-			if (deleteRes != null) {
-				System.out.println("Deleted S3 object: " + key);
-			} else {
-				throw new RuntimeException("S3 exception occurred during delete");
-			}
-		});
+		this.s3Client.deleteObject(req).join(); // waits until delete is complete
+		System.out.println("Deleted S3 object: " + key);
 	}
 
 	/**
