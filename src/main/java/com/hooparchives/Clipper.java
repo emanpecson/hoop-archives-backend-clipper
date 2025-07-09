@@ -8,6 +8,7 @@ import java.nio.file.Paths;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.SQSEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.hooparchives.types.UploadRequest;
 import com.hooparchives.types.ClipRequest;
@@ -49,7 +50,9 @@ public class Clipper implements RequestHandler<SQSEvent, Void> {
 
 			try {
 				// parse body as the expected request type
-				req = new ObjectMapper().readValue(body, UploadRequest.class);
+				ObjectMapper mapper = new ObjectMapper();
+				mapper.registerModule(new Jdk8Module());
+				req = mapper.readValue(body, UploadRequest.class);
 
 				ddb.updateGameStatus(req, GameStatusEnum.UPLOADING);
 
