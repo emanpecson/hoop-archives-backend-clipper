@@ -5,38 +5,27 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-
 import com.amazonaws.services.lambda.runtime.RequestHandler;
+import com.amazonaws.services.lambda.runtime.events.SQSEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.amazonaws.services.lambda.runtime.Context;
-import com.hooparchives.TrimRequest.Clip;
+import com.hooparchives.types.UploadRequest;
+import com.hooparchives.types.ClipRequest;
+import com.hooparchives.types.GameStatusEnum;
 
-import software.amazon.awssdk.http.SdkHttpResponse;
-import software.amazon.awssdk.services.s3.S3AsyncClient;
-import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.transfer.s3.S3TransferManager;
-import software.amazon.awssdk.transfer.s3.model.CompletedFileDownload;
-import software.amazon.awssdk.transfer.s3.model.CompletedFileUpload;
-import software.amazon.awssdk.transfer.s3.model.DownloadFileRequest;
-import software.amazon.awssdk.transfer.s3.model.FileDownload;
-import software.amazon.awssdk.transfer.s3.model.FileUpload;
-import software.amazon.awssdk.transfer.s3.model.UploadFileRequest;
-
-public class Clipper implements RequestHandler<TrimRequest, TrimResponse> {
-	private final S3TransferManager s3TransferManager;
-	private final S3AsyncClient s3Client;
-
-	private final String region = System.getenv("AWS_REGION");
-	private final String bucket = System.getenv("AWS_S3_BUCKET_NAME");
+public class Clipper implements RequestHandler<SQSEvent, Void> {
+	private final S3TransferManagerHandler s3TransferManager;
+	private final S3AsyncClientHandler s3AsyncClient;
+	private final DdbHandler ddb;
 
 	private final String downloadsPathname = "/tmp/downloads";
 	private final String clipsPathname = "/tmp/clips";
-
-	private final String thumbnailFilenamePrefix = "THUMBNAIL_";
+	private final String thumbnailPrefix = "THUMBNAIL_";
 
 	public Clipper() {
-		this.s3TransferManager = S3TransferManagerProvider.getTransferManager();
-		this.s3Client = S3AsyncClientProvider.getClient();
+		this.s3TransferManager = new S3TransferManagerHandler();
+		this.s3AsyncClient = new S3AsyncClientHandler();
+		this.ddb = new DdbHandler();
 	}
 
 	/**
@@ -49,78 +38,78 @@ public class Clipper implements RequestHandler<TrimRequest, TrimResponse> {
 	 * @throws Exception
 	 * @throws IOException
 	 */
-	public TrimResponse handleRequest(TrimRequest req, Context context) {
-		System.out.println("Entering trim request");
-		ArrayList<String> clipUrls = new ArrayList<>();
-		String thumbnailUrl = "";
+	@Override
+	public Void handleRequest(SQSEvent event, Context context) {
+		context.getLogger().log("[Clipper] Entering");
 
-		try {
-			// ensure `/tmp/...` folders are created
-			Files.createDirectories(Paths.get(this.downloadsPathname));
-			Files.createDirectories(Paths.get(this.clipsPathname));
+		for (SQSEvent.SQSMessage message : event.getRecords()) {
+			String body = message.getBody();
+			context.getLogger().log("[Clipper] Message: " + body);
+			UploadRequest req = null;
 
-			// download video
-			System.out.println("Downloading video");
-			Path downloadsPath = Paths.get(this.downloadsPathname, req.key);
-			this.downloadFile(downloadsPath, req.key);
+			try {
+				// parse body as the expected request type
+				req = new ObjectMapper().readValue(body, UploadRequest.class);
 
-			// process clips
-			for (int i = 0; i < req.clips.size(); i++) {
-				Clip clip = req.clips.get(i);
-				Integer dotIndex = req.key.indexOf(".");
-				String ext = req.key.substring(dotIndex);
-				String clipName = req.key.substring(0, dotIndex) + "_" + i + ext;
+				ddb.updateGameStatus(req, GameStatusEnum.UPLOADING);
 
-				System.out.println("Processing " + clipName);
+				// ensure `/tmp/...` folders are created
+				Files.createDirectories(Paths.get(this.downloadsPathname));
+				Files.createDirectories(Paths.get(this.clipsPathname));
 
-				Path clipOutputPath = Paths.get(this.clipsPathname, clipName);
+				// update game thumbnail
+				String thumbnailFilename = this.thumbnailPrefix + req.gameTitle + ".jpg";
+				Path thumbnailPath = createThumbnail(req.key, thumbnailFilename);
+				String thumbnailUrl = s3TransferManager.upload(thumbnailPath, thumbnailFilename, context);
+				ddb.updateGameThumbnail(req, thumbnailUrl);
 
-				this.trimClip(downloadsPath, clipOutputPath, clip, clipName);
-				String clipUrl = this.s3Upload(clipOutputPath, clipName);
+				// download game video by bucket key
+				Path downloadsPath = Paths.get(this.downloadsPathname, req.key);
+				context.getLogger().log("[Clipper] Downloading video: " + downloadsPath.toString());
+				s3TransferManager.downloadFile(downloadsPath, req.key);
 
-				clipUrls.add(clipUrl);
+				// process clips
+				for (int i = 0; i < req.clipRequests.size(); i++) {
+					ClipRequest clip = req.clipRequests.get(i);
+					String log = String.format("[Clipper] Processing %s (%d/%d)", clip.clipId, i + 1, req.clipRequests.size());
+					context.getLogger().log(log);
+
+					// define clip download path
+					String ext = req.key.substring(req.key.indexOf("."));
+					String clipFilename = clip.clipId + ext;
+					Path clipOutputPath = Paths.get(this.clipsPathname, clipFilename);
+
+					// trim clip + put in s3
+					this.trimClip(downloadsPath, clipOutputPath, clip);
+					String clipUrl = s3TransferManager.upload(clipOutputPath, clipFilename, context);
+
+					// create clip in ddb
+					ddb.createGameClip(req, clip, clipUrl);
+				}
+
+				// remove original video from downloads + s3 bucket
+				context.getLogger().log("[Clipper] Cleaning up");
+				s3AsyncClient.delete(req.key, context);
+				this.deleteDownload(req.key, context);
+				this.deleteDownload(thumbnailFilename, context);
+				this.deleteClips(context);
+
+				ddb.updateGameStatus(req, GameStatusEnum.COMPLETE);
+			} catch (Exception error) {
+				context.getLogger().log("[Clipper] " + error.getMessage());
+
+				if (req != null) {
+					try {
+						ddb.updateGameStatus(req, GameStatusEnum.FAILED);
+					} catch (Exception ddbError) {
+						context.getLogger().log("[Clipper] " + error.getMessage());
+					}
+				}
 			}
-
-			// create thumbnail
-			String baseName = req.key.replaceFirst("[.][^.]+$", ""); // remove extension
-			String thumbnailFilename = this.thumbnailFilenamePrefix + baseName + ".jpg";
-			Path thumbnailPath = createThumbnail(req.key, thumbnailFilename);
-			thumbnailUrl = this.s3Upload(thumbnailPath, thumbnailFilename);
-
-			// remove original video from downloads + s3 bucket
-			System.out.println("Clips processed, cleaning up...");
-			this.s3RemoveVideo(req.key);
-			this.deleteDownload(req.key);
-			this.deleteDownload(thumbnailFilename);
-			this.deleteClips();
-
-			System.out.println("Exiting trim request");
-			return new TrimResponse(clipUrls, thumbnailUrl);
-		} catch (Exception error) {
-			context.getLogger().log(error.getMessage());
-			return new TrimResponse(error.getMessage());
 		}
-	}
 
-	/**
-	 * Downloads a video from S3 and stores it into ~/tmp/downloads/*
-	 * 
-	 * @param destinationPath Downloads folder with the filename
-	 * @param key             Key of stored item
-	 */
-	private void downloadFile(Path destinationPath, String key) throws Exception {
-		DownloadFileRequest req = DownloadFileRequest.builder()
-				.getObjectRequest(b -> b.bucket(this.bucket).key(key))
-				.destination(destinationPath)
-				.build();
-
-		FileDownload downloadFile = this.s3TransferManager.downloadFile(req);
-		CompletedFileDownload download = downloadFile.completionFuture().join();
-		SdkHttpResponse res = download.response().sdkHttpResponse();
-
-		if (!res.isSuccessful()) {
-			throw new Exception("Download failed with status code: " + res.statusCode());
-		}
+		context.getLogger().log("[Clipper] Exiting");
+		return null;
 	}
 
 	/**
@@ -128,19 +117,20 @@ public class Clipper implements RequestHandler<TrimRequest, TrimResponse> {
 	 * 
 	 * @param videoInputPath Path to video to edit
 	 * @param clipOutputPath Path to store created clips
-	 * @param clip           Clip with start/duration
-	 * @param clipName       Name of clip to create
+	 * @param clip           Clip request
 	 * @throws IOException
 	 * @throws InterruptedException
 	 * @throws Exception
 	 */
-	private void trimClip(Path videoInputPath, Path clipOutputPath, Clip clip, String clipName)
+	private void trimClip(Path videoInputPath, Path clipOutputPath, ClipRequest clip)
 			throws InterruptedException, Exception {
+		Float duration = clip.endTime - clip.startTime;
+
 		ProcessBuilder processBuilder = new ProcessBuilder(
 				"ffmpeg",
 				"-i", videoInputPath.toString(),
-				"-ss", clip.start,
-				"-t", clip.duration,
+				"-ss", clip.startTime.toString(),
+				"-t", duration.toString(),
 				"-c", "copy", // copy codecs (w/o re-encoding)
 				clipOutputPath.toString());
 
@@ -153,69 +143,29 @@ public class Clipper implements RequestHandler<TrimRequest, TrimResponse> {
 	}
 
 	/**
-	 * Upload clip to S3 "Uploads" bucket
-	 * 
-	 * @param clipPath Path to file to upload
-	 * @param key      Key of item to store
-	 * @return Clip url
-	 * @throws Exception
-	 */
-	private String s3Upload(Path clipPath, String key) throws Exception {
-		UploadFileRequest req = UploadFileRequest.builder()
-				.putObjectRequest(b -> b.bucket(this.bucket).key(key))
-				.source(clipPath)
-				.build();
-
-		FileUpload upload = this.s3TransferManager.uploadFile(req);
-		CompletedFileUpload uploadResult = upload.completionFuture().join();
-		SdkHttpResponse res = uploadResult.response().sdkHttpResponse();
-
-		if (!res.isSuccessful()) {
-			throw new Exception("Invalid S3 put request");
-		}
-
-		String url = "https://" + this.bucket + ".s3." + this.region + ".amazonaws.com/" + key;
-		System.out.println("Successful put request: " + url);
-
-		return url;
-	}
-
-	/**
-	 * Delete file object from S3 bucket. After creating the clips, the video
-	 * is no longer necessary. As we'll be able to reference a game by its clips.
-	 * 
-	 * @param key Key of stored item to remove
-	 * @throws RuntimeException
-	 */
-	private void s3RemoveVideo(String key) throws RuntimeException {
-		DeleteObjectRequest req = DeleteObjectRequest.builder()
-				.bucket(this.bucket)
-				.key(key)
-				.build();
-
-		this.s3Client.deleteObject(req).join(); // waits until delete is complete
-		System.out.println("Deleted S3 object: " + key);
-	}
-
-	/**
 	 * Delete file within the downloads directory.
 	 * 
 	 * @param filename Name of downloaded file to delete
 	 */
-	public void deleteDownload(String filename) {
+	private void deleteDownload(String filename, Context context) {
 		Path path = Paths.get(this.downloadsPathname, filename);
 
 		try {
 			Files.delete(path);
-			System.out.println("File deleted: " + path.toString());
+			context.getLogger().log("[Clipper] File deleted: " + path.toString());
 		} catch (NoSuchFileException e) {
-			System.out.println("File not found: " + path.toString());
+			context.getLogger().log("[Clipper] File not found: " + path.toString());
 		} catch (Exception e) {
-			System.out.println("Error deleting " + filename + ": " + e.getMessage());
+			context.getLogger().log("[Clipper] Error deleting " + filename + ": " + e.getMessage());
 		}
 	}
 
-	public void deleteClips() {
+	/**
+	 * Delete all files within the clips folder
+	 * 
+	 * @param context
+	 */
+	private void deleteClips(Context context) {
 		Path path = Paths.get(this.clipsPathname);
 
 		try {
@@ -224,14 +174,14 @@ public class Clipper implements RequestHandler<TrimRequest, TrimResponse> {
 						.forEach(file -> {
 							try {
 								Files.deleteIfExists(file);
-								System.out.println("Deleted: " + file);
+								context.getLogger().log("[Clipper] Deleted: " + file);
 							} catch (IOException e) {
-								System.out.println("Failed to delete: " + file + " - " + e.getMessage());
+								context.getLogger().log("[Clipper] Failed to delete: " + file + " - " + e.getMessage());
 							}
 						});
 			}
 		} catch (IOException e) {
-			System.out.println("Error cleaning clip folder: " + e.getMessage());
+			context.getLogger().log("[Clipper] Error cleaning clip folder: " + e.getMessage());
 		}
 	}
 
@@ -243,7 +193,7 @@ public class Clipper implements RequestHandler<TrimRequest, TrimResponse> {
 	 * @return Path to thumbnail image
 	 * @throws Exception
 	 */
-	public Path createThumbnail(String videoFilename, String thumbnailFilename) throws Exception {
+	private Path createThumbnail(String videoFilename, String thumbnailFilename) throws Exception {
 		Path videoPath = Paths.get(this.downloadsPathname, videoFilename);
 		Path thumbnailPath = Paths.get(this.downloadsPathname, thumbnailFilename);
 		String startOfVideo = "00:00:01";
