@@ -134,6 +134,10 @@ public class DdbHandler {
 		key.put("leagueId", AttributeValue.fromS(uploadReq.leagueId));
 		key.put("title", AttributeValue.fromS(uploadReq.gameTitle));
 
+		// escape reserved ddb word "status"
+		Map<String, String> expressionAttributeNames = new HashMap<>();
+		expressionAttributeNames.put("#status", "status");
+
 		Map<String, AttributeValue> expressionAttributeValues = new HashMap<>();
 		expressionAttributeValues.put(":status", AttributeValue.fromS(status.toString()));
 
@@ -141,8 +145,9 @@ public class DdbHandler {
 				.builder()
 				.tableName(gamesTable)
 				.key(key)
-				.updateExpression("SET status = :status")
+				.expressionAttributeNames(expressionAttributeNames)
 				.expressionAttributeValues(expressionAttributeValues)
+				.updateExpression("SET #status = :status")
 				.build();
 
 		UpdateItemResponse res = ddbClient.updateItem(updateReq);
