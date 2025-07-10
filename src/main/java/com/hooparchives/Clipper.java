@@ -60,16 +60,16 @@ public class Clipper implements RequestHandler<SQSEvent, Void> {
 				Files.createDirectories(Paths.get(this.downloadsPathname));
 				Files.createDirectories(Paths.get(this.clipsPathname));
 
+				// download game video by bucket key
+				Path downloadsPath = Paths.get(this.downloadsPathname, req.key);
+				context.getLogger().log("[Clipper] Downloading video: " + downloadsPath.toString());
+				s3TransferManager.downloadFile(downloadsPath, req.key);
+
 				// update game thumbnail
 				String thumbnailFilename = this.thumbnailPrefix + req.gameTitle + ".jpg";
 				Path thumbnailPath = createThumbnail(req.key, thumbnailFilename);
 				String thumbnailUrl = s3TransferManager.upload(thumbnailPath, thumbnailFilename, context);
 				ddb.updateGameThumbnail(req, thumbnailUrl);
-
-				// download game video by bucket key
-				Path downloadsPath = Paths.get(this.downloadsPathname, req.key);
-				context.getLogger().log("[Clipper] Downloading video: " + downloadsPath.toString());
-				s3TransferManager.downloadFile(downloadsPath, req.key);
 
 				// process clips
 				for (int i = 0; i < req.clipRequests.size(); i++) {
@@ -130,9 +130,10 @@ public class Clipper implements RequestHandler<SQSEvent, Void> {
 		Float duration = clip.endTime - clip.startTime;
 
 		ProcessBuilder processBuilder = new ProcessBuilder(
-				"ffmpeg",
-				"-i", videoInputPath.toString(),
+				System.getenv("FFMPEG_PATH"),
+				"-y",
 				"-ss", clip.startTime.toString(),
+				"-i", videoInputPath.toString(),
 				"-t", duration.toString(),
 				"-c", "copy", // copy codecs (w/o re-encoding)
 				clipOutputPath.toString());
@@ -202,7 +203,8 @@ public class Clipper implements RequestHandler<SQSEvent, Void> {
 		String startOfVideo = "00:00:01";
 
 		ProcessBuilder processBuilder = new ProcessBuilder(
-				"ffmpeg",
+				System.getenv("FFMPEG_PATH"),
+				"-y",
 				"-ss", startOfVideo,
 				"-i", videoPath.toString(),
 				"-frames:v", "1",
