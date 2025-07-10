@@ -81,19 +81,19 @@ public class DdbHandler {
 		gameClip.put("url", AttributeValue.fromS(clipUrl));
 
 		// conditional `offense` play
-		if (clipReq.offense.isPresent()) {
+		if (clipReq.offense != null && clipReq.offense.isPresent()) {
 			OffensivePlay offensivePlay = clipReq.offense.get();
 			Map<String, AttributeValue> offense = new HashMap<>();
 
 			offense.put("pointsAdded", AttributeValue.fromN(offensivePlay.pointsAdded.toString()));
 			offense.put("playerScoring", AttributeValue.fromM(toAttributeValue(offensivePlay.playerScoring)));
 
-			if (offensivePlay.playerAssisting.isPresent()) {
+			if (offensivePlay.playerAssisting != null && offensivePlay.playerAssisting.isPresent()) {
 				Player assister = offensivePlay.playerAssisting.get();
 				offense.put("playerAssisting", AttributeValue.fromM(toAttributeValue(assister)));
 			}
 
-			if (offensivePlay.playersDefending.isPresent()) {
+			if (offensivePlay.playersDefending != null && offensivePlay.playersDefending.isPresent()) {
 				List<Player> defenders = offensivePlay.playersDefending.get();
 				offense.put("playersDefending", AttributeValue.fromL(toAttributeValue(defenders)));
 			}
@@ -102,7 +102,7 @@ public class DdbHandler {
 		}
 
 		// conditional `defense` play
-		else if (clipReq.defense.isPresent()) {
+		else if (clipReq.defense != null && clipReq.defense.isPresent()) {
 			DefensivePlay defensivePlay = clipReq.defense.get();
 			Map<String, AttributeValue> defense = new HashMap<>();
 
