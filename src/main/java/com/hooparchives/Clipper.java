@@ -92,7 +92,6 @@ public class Clipper implements RequestHandler<SQSEvent, Void> {
 
 				// remove original video from downloads + s3 bucket
 				context.getLogger().log("[Clipper] Cleaning up");
-				s3AsyncClient.delete(req.key, context);
 				this.deleteDownload(req.key, context);
 				this.deleteDownload(thumbnailFilename, context);
 				this.deleteClips(context);

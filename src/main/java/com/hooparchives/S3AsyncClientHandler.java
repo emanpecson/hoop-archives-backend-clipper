@@ -18,6 +18,7 @@ public class S3AsyncClientHandler {
 				.build();
 	}
 
+	// ! not in use
 	/**
 	 * Delete file object from S3 bucket. After creating the clips, the video
 	 * is no longer necessary. As we'll be able to reference a game by its clips.
