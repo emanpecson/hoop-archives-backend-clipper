@@ -6,4 +6,5 @@ public class Player {
 	public String fullName;
 	public String firstName;
 	public String lastName;
+	public String imageUrl;
 }

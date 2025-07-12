@@ -41,6 +41,7 @@ public class DdbHandler {
 		map.put("playerId", AttributeValue.fromS(player.playerId));
 		map.put("firstName", AttributeValue.fromS(player.firstName));
 		map.put("lastName", AttributeValue.fromS(player.lastName));
+		map.put("imageUrl", AttributeValue.fromS(player.imageUrl));
 		return map;
 	}
 
