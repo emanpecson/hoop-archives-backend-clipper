@@ -24,7 +24,7 @@ import software.amazon.awssdk.services.dynamodb.model.UpdateItemResponse;
 public class DdbHandler {
 	private static final DynamoDbClient ddbClient = buildDdbClient();
 	private static final String gamesTable = System.getenv("AWS_DDB_GAMES_TABLE");
-	private static final String gameClipsTable = System.getenv("AWS_DDB_GAME_CLIPS_TABLE");
+	private static final String clipsTable = System.getenv("AWS_DDB_CLIPS_TABLE");
 
 	private static DynamoDbClient buildDdbClient() {
 		return DynamoDbClient.builder()
@@ -112,7 +112,7 @@ public class DdbHandler {
 		}
 
 		PutItemRequest req = PutItemRequest.builder()
-				.tableName(gameClipsTable)
+				.tableName(clipsTable)
 				.item(gameClip)
 				.build();
 
