@@ -16,7 +16,7 @@ import com.hooparchives.types.GameStatusEnum;
 
 public class Clipper implements RequestHandler<SQSEvent, Void> {
 	private final S3TransferManagerHandler s3TransferManager;
-	private final S3AsyncClientHandler s3AsyncClient;
+	// private final S3AsyncClientHandler s3AsyncClient;
 	private final DdbHandler ddb;
 
 	private final String downloadsPathname = "/tmp/downloads";
@@ -25,7 +25,7 @@ public class Clipper implements RequestHandler<SQSEvent, Void> {
 
 	public Clipper() {
 		this.s3TransferManager = new S3TransferManagerHandler();
-		this.s3AsyncClient = new S3AsyncClientHandler();
+		// this.s3AsyncClient = new S3AsyncClientHandler();
 		this.ddb = new DdbHandler();
 	}
 
