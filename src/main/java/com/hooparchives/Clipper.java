@@ -66,7 +66,7 @@ public class Clipper implements RequestHandler<SQSEvent, Void> {
 				s3TransferManager.downloadFile(downloadsPath, req.key);
 
 				// update game thumbnail
-				String thumbnailFilename = this.thumbnailPrefix + req.gameTitle + ".jpg";
+				String thumbnailFilename = this.thumbnailPrefix + req.gameId + ".jpg";
 				Path thumbnailPath = createThumbnail(req.key, thumbnailFilename);
 				String thumbnailUrl = s3TransferManager.upload(thumbnailPath, thumbnailFilename, context);
 				ddb.updateGameThumbnail(req, thumbnailUrl);

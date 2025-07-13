@@ -68,7 +68,7 @@ public class DdbHandler {
 
 		// common clip attributes
 		gameClip.put("leagueId", AttributeValue.fromS(uploadReq.leagueId));
-		gameClip.put("gameTitle", AttributeValue.fromS(uploadReq.gameTitle));
+		gameClip.put("gameId", AttributeValue.fromS(uploadReq.gameId));
 		gameClip.put("date", AttributeValue.fromS(uploadReq.date.toString()));
 
 		// unique clip attributes
@@ -133,7 +133,7 @@ public class DdbHandler {
 	public void updateGameStatus(UploadRequest uploadReq, GameStatusEnum status) throws Exception {
 		Map<String, AttributeValue> key = new HashMap<>();
 		key.put("leagueId", AttributeValue.fromS(uploadReq.leagueId));
-		key.put("title", AttributeValue.fromS(uploadReq.gameTitle));
+		key.put("gameId", AttributeValue.fromS(uploadReq.gameId));
 
 		// escape reserved ddb word "status"
 		Map<String, String> expressionAttributeNames = new HashMap<>();
@@ -154,7 +154,7 @@ public class DdbHandler {
 		UpdateItemResponse res = ddbClient.updateItem(updateReq);
 
 		if (!res.sdkHttpResponse().isSuccessful()) {
-			throw new Exception("Error updating game status: " + uploadReq.gameTitle);
+			throw new Exception("Error updating game status: " + uploadReq.gameId);
 		}
 	}
 
@@ -168,7 +168,7 @@ public class DdbHandler {
 	public void updateGameThumbnail(UploadRequest uploadReq, String thumbnailUrl) throws Exception {
 		Map<String, AttributeValue> key = new HashMap<>();
 		key.put("leagueId", AttributeValue.fromS(uploadReq.leagueId));
-		key.put("title", AttributeValue.fromS(uploadReq.gameTitle));
+		key.put("gameId", AttributeValue.fromS(uploadReq.gameId));
 
 		Map<String, AttributeValue> expressionAttributeValues = new HashMap<>();
 		expressionAttributeValues.put(":thumbnailUrl", AttributeValue.fromS(thumbnailUrl));
@@ -184,7 +184,7 @@ public class DdbHandler {
 		UpdateItemResponse res = ddbClient.updateItem(req);
 
 		if (!res.sdkHttpResponse().isSuccessful()) {
-			throw new Exception("Error updating game thumbnail: " + uploadReq.gameTitle);
+			throw new Exception("Error updating game thumbnail: " + uploadReq.gameId);
 		}
 	}
 }

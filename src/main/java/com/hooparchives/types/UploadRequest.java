@@ -5,7 +5,7 @@ import java.util.List;
 
 public class UploadRequest {
 	public String leagueId;
-	public String gameTitle;
+	public String gameId;
 	public String key; // game title + extension
 	public Date date;
 
