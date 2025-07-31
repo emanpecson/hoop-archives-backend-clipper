@@ -66,6 +66,10 @@ public class DdbHandler {
 		// build game clip
 		Map<String, AttributeValue> gameClip = new HashMap<>();
 
+		List<AttributeValue> tagList = clipReq.tags.stream()
+				.map(AttributeValue::fromS)
+				.collect(Collectors.toList());
+
 		// common clip attributes
 		gameClip.put("leagueId", AttributeValue.fromS(uploadReq.leagueId));
 		gameClip.put("gameId", AttributeValue.fromS(uploadReq.gameId));
@@ -73,7 +77,7 @@ public class DdbHandler {
 
 		// unique clip attributes
 		gameClip.put("clipId", AttributeValue.fromS(clipReq.clipId));
-		gameClip.put("tags", AttributeValue.fromSs(clipReq.tags));
+		gameClip.put("tags", AttributeValue.fromL(tagList));
 		gameClip.put("startTime", AttributeValue.fromN(clipReq.startTime.toString()));
 		gameClip.put("endTime", AttributeValue.fromN(clipReq.endTime.toString()));
 		gameClip.put("highlightTime", AttributeValue.fromN(clipReq.highlightTime.toString()));
