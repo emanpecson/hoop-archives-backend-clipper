@@ -1,10 +1,13 @@
 package com.hooparchives;
 
+import java.io.BufferedWriter;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.SQSEvent;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,7 +24,9 @@ public class Clipper implements RequestHandler<SQSEvent, Void> {
 
 	private final String downloadsPathname = "/tmp/downloads";
 	private final String clipsPathname = "/tmp/clips";
-	private final String thumbnailPrefix = "THUMBNAIL_";
+	private final String thumbnailPrefix = "thumbnail_";
+	private final String combinedClipsPrefix = "combined_";
+	private final String ext = ".mp4";
 
 	public Clipper() {
 		this.s3TransferManager = new S3TransferManagerHandler();
@@ -78,8 +83,7 @@ public class Clipper implements RequestHandler<SQSEvent, Void> {
 					context.getLogger().log(log);
 
 					// define clip download path
-					String ext = req.key.substring(req.key.indexOf("."));
-					String clipFilename = clip.clipId + ext;
+					String clipFilename = clip.clipId + this.ext;
 					Path clipOutputPath = Paths.get(this.clipsPathname, clipFilename);
 
 					// trim clip + put in s3
@@ -89,6 +93,13 @@ public class Clipper implements RequestHandler<SQSEvent, Void> {
 					// create clip in ddb
 					ddb.createGameClip(req, clip, clipUrl);
 				}
+
+				// combine all clips + upload
+				context.getLogger().log("[Clipper] Combining all clips");
+				String gameClipsKey = this.combinedClipsPrefix + req.gameId + this.ext;
+				Path combinedOutputPath = combineClips(req, gameClipsKey, context);
+				String gameClipsUrl = s3TransferManager.upload(combinedOutputPath, gameClipsKey, context);
+				ddb.setGameClipsUrl(req, gameClipsUrl);
 
 				// remove original video from downloads + s3 bucket
 				context.getLogger().log("[Clipper] Cleaning up");
@@ -134,7 +145,15 @@ public class Clipper implements RequestHandler<SQSEvent, Void> {
 				"-ss", clip.startTime.toString(),
 				"-i", videoInputPath.toString(),
 				"-t", duration.toString(),
-				"-c", "copy", // copy codecs (w/o re-encoding)
+				"-r", "30", // force frame rate
+				"-pix_fmt", "yuv420p", // match pixel format
+				"-ar", "44100", // standard audio sample rate
+				"-ac", "2", // stereo
+				"-c:v", "libx264", // encode as .mp4 compatible video
+				"-c:a", "aac", // encode as .mp4 compatible audio
+				"-preset", "fast",
+				"-crf", "22", // match CRF
+				"-b:a", "128k", // match audio bitrate
 				clipOutputPath.toString());
 
 		Process process = processBuilder.start();
@@ -218,5 +237,71 @@ public class Clipper implements RequestHandler<SQSEvent, Void> {
 		}
 
 		return thumbnailPath;
+	}
+
+	/**
+	 * To compile clips together, FFmpeg needs a list of how it should be
+	 * sorted together.
+	 * 
+	 * Then run the concat FFmpeg concat command.
+	 * 
+	 * @param req
+	 * @throws IOException
+	 */
+	private Path combineClips(UploadRequest req, String gameClipsKey, Context context)
+			throws IOException, InterruptedException, Exception {
+
+		Path clipsListFilePath = Paths.get(this.clipsPathname, "clips_list.txt");
+
+		// copy clips into a clips_list.txt file for ffmpeg to process
+		try (BufferedWriter writer = Files.newBufferedWriter(clipsListFilePath)) {
+
+			for (int i = 0; i < req.clipRequests.size(); i++) {
+				ClipRequest clip = req.clipRequests.get(i);
+				String clipFilename = clip.clipId + this.ext;
+				Path clipPath = Paths.get(this.clipsPathname, clipFilename);
+
+				if (!Files.exists(clipPath)) {
+					context.getLogger().log("[Clipper] Missing clip to concatenate: " + clipPath);
+				}
+
+				String concatLog = String.format("[Clipper] Concatenating %s (%d/%d)", clip.clipId, i + 1,
+						req.clipRequests.size());
+				context.getLogger().log(concatLog);
+
+				// line format: file '/path/to/my-clip.mp4'
+				writer.write("file '" + clipPath.toString() + "'");
+				writer.newLine();
+			}
+
+		} catch (Exception error) {
+			context.getLogger().log("[Clipper] " + error.getMessage());
+		}
+
+		File tmpDir = new File("/tmp");
+		long usableSpace = tmpDir.getUsableSpace() / (1024 * 1024); // MB
+		context.getLogger().log("Available /tmp space: " + usableSpace + " MB");
+
+		Path combinedOutputPath = Paths.get(this.clipsPathname, gameClipsKey);
+		ProcessBuilder processBuilder = new ProcessBuilder(
+				System.getenv("FFMPEG_PATH"),
+				"-y",
+				"-f", "concat",
+				"-safe", "0",
+				"-i", clipsListFilePath.toString(),
+				"-c", "copy", // copy both video and audio streams
+				combinedOutputPath.toString());
+
+		context.getLogger().log("[Clipper] FFmpeg is attempting to combine clips @ " + combinedOutputPath.toString());
+
+		Process process = processBuilder.start();
+		int exitCode = process.waitFor();
+
+		if (exitCode != 0) {
+			throw new Exception("Process failed with exit code: " + exitCode);
+		}
+
+		context.getLogger().log("[Clipper] FFmpeg has finished combining clips");
+		return combinedOutputPath;
 	}
 }

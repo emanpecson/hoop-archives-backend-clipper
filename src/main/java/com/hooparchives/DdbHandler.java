@@ -191,4 +191,27 @@ public class DdbHandler {
 			throw new Exception("Error updating game thumbnail: " + uploadReq.gameId);
 		}
 	}
+
+	public void setGameClipsUrl(UploadRequest uploadReq, String gameClipsUrl) throws Exception {
+		Map<String, AttributeValue> key = new HashMap<>();
+		key.put("leagueId", AttributeValue.fromS(uploadReq.leagueId));
+		key.put("gameId", AttributeValue.fromS(uploadReq.gameId));
+
+		Map<String, AttributeValue> expressionAttributeValues = new HashMap<>();
+		expressionAttributeValues.put(":gameClipsUrl", AttributeValue.fromS(gameClipsUrl));
+
+		UpdateItemRequest req = UpdateItemRequest
+				.builder()
+				.tableName(gamesTable)
+				.key(key)
+				.updateExpression("SET gameClipsUrl = :gameClipsUrl")
+				.expressionAttributeValues(expressionAttributeValues)
+				.build();
+
+		UpdateItemResponse res = ddbClient.updateItem(req);
+
+		if (!res.sdkHttpResponse().isSuccessful()) {
+			throw new Exception("Error updating game thumbnail: " + uploadReq.gameId);
+		}
+	}
 }
