@@ -1,6 +1,6 @@
 package com.hooparchives.types;
 
-public enum GameStatusEnum {
+public enum UploadStatusEnum {
 	PENDING("pending"),
 	UPLOADING("uploading"),
 	COMPLETE("complete"),
@@ -8,7 +8,7 @@ public enum GameStatusEnum {
 
 	public String status;
 
-	GameStatusEnum(String status) {
+	UploadStatusEnum(String status) {
 		this.status = status;
 	}
 

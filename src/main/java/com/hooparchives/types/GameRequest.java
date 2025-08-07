@@ -3,7 +3,7 @@ package com.hooparchives.types;
 import java.util.Date;
 import java.util.List;
 
-public class UploadRequest {
+public class GameRequest {
 	public String leagueId;
 	public String gameId;
 	public String key; // game title + extension

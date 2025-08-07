@@ -7,10 +7,11 @@ import java.util.stream.Collectors;
 
 import com.hooparchives.types.ClipRequest;
 import com.hooparchives.types.DefensivePlay;
-import com.hooparchives.types.GameStatusEnum;
+import com.hooparchives.types.UploadStatusEnum;
 import com.hooparchives.types.OffensivePlay;
 import com.hooparchives.types.Player;
-import com.hooparchives.types.UploadRequest;
+import com.hooparchives.types.ReelRequest;
+import com.hooparchives.types.GameRequest;
 
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -25,6 +26,7 @@ public class DdbHandler {
 	private static final DynamoDbClient ddbClient = buildDdbClient();
 	private static final String gamesTable = System.getenv("AWS_DDB_GAMES_TABLE");
 	private static final String clipsTable = System.getenv("AWS_DDB_CLIPS_TABLE");
+	private static final String reelsTable = System.getenv("AWS_DDB_REELS_TABLE");
 
 	private static DynamoDbClient buildDdbClient() {
 		return DynamoDbClient.builder()
@@ -57,12 +59,12 @@ public class DdbHandler {
 	/**
 	 * Create GameClips object in DynamoDB
 	 * 
-	 * @param uploadReq Common clip data
-	 * @param clipReq   Unique clip data
-	 * @param clipUrl   Generated S3 URL
+	 * @param gameReq Common clip data
+	 * @param clipReq Unique clip data
+	 * @param clipUrl Generated S3 URL
 	 * @throws Exception
 	 */
-	public void createGameClip(UploadRequest uploadReq, ClipRequest clipReq, String clipUrl) throws Exception {
+	public void createGameClip(GameRequest gameReq, ClipRequest clipReq, String clipUrl) throws Exception {
 		// build game clip
 		Map<String, AttributeValue> gameClip = new HashMap<>();
 
@@ -71,9 +73,9 @@ public class DdbHandler {
 				.collect(Collectors.toList());
 
 		// common clip attributes
-		gameClip.put("leagueId", AttributeValue.fromS(uploadReq.leagueId));
-		gameClip.put("gameId", AttributeValue.fromS(uploadReq.gameId));
-		gameClip.put("date", AttributeValue.fromS(uploadReq.date.toString()));
+		gameClip.put("leagueId", AttributeValue.fromS(gameReq.leagueId));
+		gameClip.put("gameId", AttributeValue.fromS(gameReq.gameId));
+		gameClip.put("date", AttributeValue.fromS(gameReq.date.toString()));
 
 		// unique clip attributes
 		gameClip.put("clipId", AttributeValue.fromS(clipReq.clipId));
@@ -127,17 +129,20 @@ public class DdbHandler {
 		}
 	}
 
+	// ------------------------------------------------------------------------------------------------------------------
+	// //
+
 	/**
-	 * Update Game status in DynamoDB
+	 * Update Game upload status in DynamoDB
 	 * 
-	 * @param uploadReq
-	 * @param status    update
+	 * @param gameReq
+	 * @param status  to update
 	 * @throws Exception
 	 */
-	public void updateGameStatus(UploadRequest uploadReq, GameStatusEnum status) throws Exception {
+	public void setGameUploadStatus(GameRequest gameReq, UploadStatusEnum status) throws Exception {
 		Map<String, AttributeValue> key = new HashMap<>();
-		key.put("leagueId", AttributeValue.fromS(uploadReq.leagueId));
-		key.put("gameId", AttributeValue.fromS(uploadReq.gameId));
+		key.put("leagueId", AttributeValue.fromS(gameReq.leagueId));
+		key.put("gameId", AttributeValue.fromS(gameReq.gameId));
 
 		// escape reserved ddb word "status"
 		Map<String, String> expressionAttributeNames = new HashMap<>();
@@ -158,21 +163,21 @@ public class DdbHandler {
 		UpdateItemResponse res = ddbClient.updateItem(updateReq);
 
 		if (!res.sdkHttpResponse().isSuccessful()) {
-			throw new Exception("Error updating game status: " + uploadReq.gameId);
+			throw new Exception("Error updating Game upload status: " + gameReq.gameId);
 		}
 	}
 
 	/**
 	 * Update Game thumbnail in DynamoDB
 	 * 
-	 * @param uploadReq
-	 * @param thumbnailUrl Attribute to update
+	 * @param gameReq
+	 * @param thumbnailUrl to update
 	 * @throws Exception
 	 */
-	public void updateGameThumbnail(UploadRequest uploadReq, String thumbnailUrl) throws Exception {
+	public void setGameThumbnailUrl(GameRequest gameReq, String thumbnailUrl) throws Exception {
 		Map<String, AttributeValue> key = new HashMap<>();
-		key.put("leagueId", AttributeValue.fromS(uploadReq.leagueId));
-		key.put("gameId", AttributeValue.fromS(uploadReq.gameId));
+		key.put("leagueId", AttributeValue.fromS(gameReq.leagueId));
+		key.put("gameId", AttributeValue.fromS(gameReq.gameId));
 
 		Map<String, AttributeValue> expressionAttributeValues = new HashMap<>();
 		expressionAttributeValues.put(":thumbnailUrl", AttributeValue.fromS(thumbnailUrl));
@@ -188,30 +193,134 @@ public class DdbHandler {
 		UpdateItemResponse res = ddbClient.updateItem(req);
 
 		if (!res.sdkHttpResponse().isSuccessful()) {
-			throw new Exception("Error updating game thumbnail: " + uploadReq.gameId);
+			throw new Exception("Error updating game thumbnail: " + gameReq.gameId);
 		}
 	}
 
-	public void setGameClipsUrl(UploadRequest uploadReq, String gameClipsUrl) throws Exception {
+	/**
+	 * Update Game source in DynamoDB
+	 * 
+	 * @param gameReq
+	 * @param sourceUrl to update
+	 * @throws Exception
+	 */
+	public void setGameSourceUrl(GameRequest gameReq, String sourceUrl) throws Exception {
 		Map<String, AttributeValue> key = new HashMap<>();
-		key.put("leagueId", AttributeValue.fromS(uploadReq.leagueId));
-		key.put("gameId", AttributeValue.fromS(uploadReq.gameId));
+		key.put("leagueId", AttributeValue.fromS(gameReq.leagueId));
+		key.put("gameId", AttributeValue.fromS(gameReq.gameId));
 
 		Map<String, AttributeValue> expressionAttributeValues = new HashMap<>();
-		expressionAttributeValues.put(":gameClipsUrl", AttributeValue.fromS(gameClipsUrl));
+		expressionAttributeValues.put(":sourceUrl", AttributeValue.fromS(sourceUrl));
 
 		UpdateItemRequest req = UpdateItemRequest
 				.builder()
 				.tableName(gamesTable)
 				.key(key)
-				.updateExpression("SET gameClipsUrl = :gameClipsUrl")
+				.updateExpression("SET sourceUrl = :sourceUrl")
 				.expressionAttributeValues(expressionAttributeValues)
 				.build();
 
 		UpdateItemResponse res = ddbClient.updateItem(req);
 
 		if (!res.sdkHttpResponse().isSuccessful()) {
-			throw new Exception("Error updating game thumbnail: " + uploadReq.gameId);
+			throw new Exception("Error updating game source URL: " + gameReq.gameId);
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------------------------------
+
+	/**
+	 * Update Reel upload status in DynamoDB
+	 * 
+	 * @param reelReq
+	 * @param status  to update
+	 * @throws Exception
+	 */
+	public void setReelUploadStatus(ReelRequest reelReq, UploadStatusEnum status) throws Exception {
+		Map<String, AttributeValue> key = new HashMap<>();
+		key.put("leagueId", AttributeValue.fromS(reelReq.leagueId));
+		key.put("reelId", AttributeValue.fromS(reelReq.reelId));
+
+		// escape reserved ddb word "status"
+		Map<String, String> expressionAttributeNames = new HashMap<>();
+		expressionAttributeNames.put("#status", "status");
+
+		Map<String, AttributeValue> expressionAttributeValues = new HashMap<>();
+		expressionAttributeValues.put(":status", AttributeValue.fromS(status.toString()));
+
+		UpdateItemRequest updateReq = UpdateItemRequest
+				.builder()
+				.tableName(reelsTable)
+				.key(key)
+				.expressionAttributeNames(expressionAttributeNames)
+				.expressionAttributeValues(expressionAttributeValues)
+				.updateExpression("SET #status = :status")
+				.build();
+
+		UpdateItemResponse res = ddbClient.updateItem(updateReq);
+
+		if (!res.sdkHttpResponse().isSuccessful()) {
+			throw new Exception("Error updating Reel upload status: " + reelReq.reelId);
+		}
+	}
+
+	/**
+	 * Update Reel thumbnail in DynamoDB
+	 * 
+	 * @param reelReq
+	 * @param thumbnailUrl to update
+	 * @throws Exception
+	 */
+	public void setReelThumbnailUrl(ReelRequest reelReq, String thumbnailUrl) throws Exception {
+		Map<String, AttributeValue> key = new HashMap<>();
+		key.put("leagueId", AttributeValue.fromS(reelReq.leagueId));
+		key.put("reelId", AttributeValue.fromS(reelReq.reelId));
+
+		Map<String, AttributeValue> expressionAttributeValues = new HashMap<>();
+		expressionAttributeValues.put(":thumbnailUrl", AttributeValue.fromS(thumbnailUrl));
+
+		UpdateItemRequest req = UpdateItemRequest
+				.builder()
+				.tableName(reelsTable)
+				.key(key)
+				.updateExpression("SET thumbnailUrl = :thumbnailUrl")
+				.expressionAttributeValues(expressionAttributeValues)
+				.build();
+
+		UpdateItemResponse res = ddbClient.updateItem(req);
+
+		if (!res.sdkHttpResponse().isSuccessful()) {
+			throw new Exception("Error updating game thumbnail: " + reelReq.reelId);
+		}
+	}
+
+	/**
+	 * Update Reel source in DynamoDB
+	 * 
+	 * @param reelReq
+	 * @param sourceUrl to update
+	 * @throws Exception
+	 */
+	public void setReelSourceUrl(ReelRequest reelReq, String sourceUrl) throws Exception {
+		Map<String, AttributeValue> key = new HashMap<>();
+		key.put("leagueId", AttributeValue.fromS(reelReq.leagueId));
+		key.put("gameId", AttributeValue.fromS(reelReq.reelId));
+
+		Map<String, AttributeValue> expressionAttributeValues = new HashMap<>();
+		expressionAttributeValues.put(":sourceUrl", AttributeValue.fromS(sourceUrl));
+
+		UpdateItemRequest req = UpdateItemRequest
+				.builder()
+				.tableName(reelsTable)
+				.key(key)
+				.updateExpression("SET sourceUrl = :sourceUrl")
+				.expressionAttributeValues(expressionAttributeValues)
+				.build();
+
+		UpdateItemResponse res = ddbClient.updateItem(req);
+
+		if (!res.sdkHttpResponse().isSuccessful()) {
+			throw new Exception("Error updating game source URL: " + reelReq.reelId);
 		}
 	}
 }
