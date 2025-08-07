@@ -59,12 +59,14 @@ public class DdbHandler {
 	/**
 	 * Create GameClips object in DynamoDB
 	 * 
-	 * @param gameReq Common clip data
-	 * @param clipReq Unique clip data
-	 * @param clipUrl Generated S3 URL
+	 * @param gameReq   Common clip data
+	 * @param clipReq   Unique clip data
+	 * @param clipUrl   Generated S3 URL
+	 * @param bucketKey S3 key
 	 * @throws Exception
 	 */
-	public void createGameClip(GameRequest gameReq, ClipRequest clipReq, String clipUrl) throws Exception {
+	public void createGameClip(GameRequest gameReq, ClipRequest clipReq, String clipUrl, String bucketKey)
+			throws Exception {
 		// build game clip
 		Map<String, AttributeValue> gameClip = new HashMap<>();
 
@@ -79,6 +81,7 @@ public class DdbHandler {
 
 		// unique clip attributes
 		gameClip.put("clipId", AttributeValue.fromS(clipReq.clipId));
+		gameClip.put("bucketKey", AttributeValue.fromS(bucketKey));
 		gameClip.put("tags", AttributeValue.fromL(tagList));
 		gameClip.put("startTime", AttributeValue.fromN(clipReq.startTime.toString()));
 		gameClip.put("endTime", AttributeValue.fromN(clipReq.endTime.toString()));

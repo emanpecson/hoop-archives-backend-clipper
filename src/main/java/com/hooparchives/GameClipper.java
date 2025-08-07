@@ -72,7 +72,7 @@ public class GameClipper extends Clipper implements RequestHandler<SQSEvent, Voi
 					String clipUrl = s3TransferManager.upload(clipOutputPath, clipFilename, context);
 
 					// create clip in ddb
-					ddb.createGameClip(req, clip, clipUrl);
+					ddb.createGameClip(req, clip, clipUrl, clipFilename);
 				}
 
 				// combine all clips + upload
