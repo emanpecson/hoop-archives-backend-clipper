@@ -93,14 +93,17 @@ public class Clipper {
 	/**
 	 * Create thumbnail from first frame of video
 	 * 
-	 * @param videoFilename     Video to source
+	 * @param sourcePath        Path where the
+	 * @param sourceFilename    Video to source
+	 * @param destinationPath   Folder where the file is stored
 	 * @param thumbnailFilename Name of thumbnail to create
 	 * @return Path to thumbnail image
 	 * @throws Exception
 	 */
-	protected Path createThumbnail(String videoFilename, String thumbnailFilename) throws Exception {
-		Path videoPath = Paths.get(this.downloadsPathname, videoFilename);
-		Path thumbnailPath = Paths.get(this.downloadsPathname, thumbnailFilename);
+	protected Path createThumbnail(String sourcePath, String sourceFilename, String destinationPath,
+			String thumbnailFilename) throws Exception {
+		Path videoPath = Paths.get(sourcePath, sourceFilename);
+		Path thumbnailPath = Paths.get(destinationPath, thumbnailFilename);
 		String startOfVideo = "00:00:01";
 
 		ProcessBuilder processBuilder = new ProcessBuilder(

@@ -39,6 +39,7 @@ public class ReelClipper extends Clipper implements RequestHandler<SQSEvent, Voi
 
 				// ensure `/tmp/...` folders are created
 				Files.createDirectories(Paths.get(this.clipsPathname));
+				Files.createDirectories(Paths.get(this.downloadsPathname));
 
 				// download all clips by bucket key
 				List<String> clipFilenames = new ArrayList<>();
@@ -51,13 +52,15 @@ public class ReelClipper extends Clipper implements RequestHandler<SQSEvent, Voi
 					context.getLogger().log(log);
 					s3TransferManager.downloadFile(clipsPath, clipKey);
 
-					String clipFilename = clipKey + this.ext;
-					clipFilenames.add(clipFilename);
+					clipFilenames.add(clipKey); // clip key includes extension (.mp4)
 
 					// set thumbnail
 					if (i == 0) {
 						String thumbnailFilename = this.thumbnailPrefix + req.reelId + ".jpg";
-						Path thumbnailPath = createThumbnail(req.reelId, thumbnailFilename);
+
+						// create thumbnail from first clip
+						Path thumbnailPath = createThumbnail(this.clipsPathname, clipFilenames.get(0), downloadsPathname,
+								thumbnailFilename);
 						String thumbnailUrl = s3TransferManager.upload(thumbnailPath, thumbnailFilename, context);
 						ddb.setReelThumbnailUrl(req, thumbnailUrl);
 					}
@@ -70,10 +73,6 @@ public class ReelClipper extends Clipper implements RequestHandler<SQSEvent, Voi
 				String sourceUrl = s3TransferManager.upload(combinedOutputPath, key, context);
 				ddb.setReelSourceUrl(req, sourceUrl);
 
-				// remove video from paths
-				context.getLogger().log("[Clipper] Cleaning up");
-				this.deleteFiles(context, Paths.get(this.clipsPathname));
-
 				ddb.setReelUploadStatus(req, UploadStatusEnum.COMPLETE);
 			} catch (Exception error) {
 				context.getLogger().log("[Clipper] " + error.getMessage());
@@ -85,11 +84,15 @@ public class ReelClipper extends Clipper implements RequestHandler<SQSEvent, Voi
 						context.getLogger().log("[Clipper] " + error.getMessage());
 					}
 				}
+			} finally {
+				// remove video from paths
+				context.getLogger().log("[Clipper] Cleaning up");
+				this.deleteFiles(context, Paths.get(this.clipsPathname));
+				this.deleteFiles(context, Paths.get(this.downloadsPathname));
 			}
 		}
 
 		context.getLogger().log("[Clipper] Exiting");
 		return null;
 	}
-
 }

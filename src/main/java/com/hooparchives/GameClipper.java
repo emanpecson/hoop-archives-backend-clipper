@@ -51,7 +51,8 @@ public class GameClipper extends Clipper implements RequestHandler<SQSEvent, Voi
 
 				// update game thumbnail
 				String thumbnailFilename = this.thumbnailPrefix + req.gameId + ".jpg";
-				Path thumbnailPath = createThumbnail(req.key, thumbnailFilename);
+				Path thumbnailPath = createThumbnail(this.downloadsPathname, req.key, this.downloadsPathname,
+						thumbnailFilename);
 				String thumbnailUrl = s3TransferManager.upload(thumbnailPath, thumbnailFilename, context);
 				ddb.setGameThumbnailUrl(req, thumbnailUrl);
 
@@ -82,11 +83,6 @@ public class GameClipper extends Clipper implements RequestHandler<SQSEvent, Voi
 				String sourceUrl = s3TransferManager.upload(combinedOutputPath, key, context);
 				ddb.setGameSourceUrl(req, sourceUrl);
 
-				// remove video from paths
-				context.getLogger().log("[Clipper] Cleaning up");
-				this.deleteFiles(context, Paths.get(this.clipsPathname));
-				this.deleteFiles(context, Paths.get(this.downloadsPathname));
-
 				ddb.setGameUploadStatus(req, UploadStatusEnum.COMPLETE);
 			} catch (Exception error) {
 				context.getLogger().log("[Clipper] " + error.getMessage());
@@ -98,11 +94,15 @@ public class GameClipper extends Clipper implements RequestHandler<SQSEvent, Voi
 						context.getLogger().log("[Clipper] " + error.getMessage());
 					}
 				}
+			} finally {
+				// remove video from paths
+				context.getLogger().log("[Clipper] Cleaning up");
+				this.deleteFiles(context, Paths.get(this.clipsPathname));
+				this.deleteFiles(context, Paths.get(this.downloadsPathname));
 			}
 		}
 
 		context.getLogger().log("[Clipper] Exiting");
 		return null;
 	}
-
 }

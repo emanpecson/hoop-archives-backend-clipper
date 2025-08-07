@@ -196,7 +196,7 @@ public class DdbHandler {
 		UpdateItemResponse res = ddbClient.updateItem(req);
 
 		if (!res.sdkHttpResponse().isSuccessful()) {
-			throw new Exception("Error updating game thumbnail: " + gameReq.gameId);
+			throw new Exception("Error updating Game thumbnail: " + gameReq.gameId);
 		}
 	}
 
@@ -226,7 +226,7 @@ public class DdbHandler {
 		UpdateItemResponse res = ddbClient.updateItem(req);
 
 		if (!res.sdkHttpResponse().isSuccessful()) {
-			throw new Exception("Error updating game source URL: " + gameReq.gameId);
+			throw new Exception("Error updating Game source URL: " + gameReq.gameId);
 		}
 	}
 
@@ -293,7 +293,7 @@ public class DdbHandler {
 		UpdateItemResponse res = ddbClient.updateItem(req);
 
 		if (!res.sdkHttpResponse().isSuccessful()) {
-			throw new Exception("Error updating game thumbnail: " + reelReq.reelId);
+			throw new Exception("Error updating Reel thumbnail: " + reelReq.reelId);
 		}
 	}
 
@@ -307,7 +307,7 @@ public class DdbHandler {
 	public void setReelSourceUrl(ReelRequest reelReq, String sourceUrl) throws Exception {
 		Map<String, AttributeValue> key = new HashMap<>();
 		key.put("leagueId", AttributeValue.fromS(reelReq.leagueId));
-		key.put("gameId", AttributeValue.fromS(reelReq.reelId));
+		key.put("reelId", AttributeValue.fromS(reelReq.reelId));
 
 		Map<String, AttributeValue> expressionAttributeValues = new HashMap<>();
 		expressionAttributeValues.put(":sourceUrl", AttributeValue.fromS(sourceUrl));
@@ -323,7 +323,7 @@ public class DdbHandler {
 		UpdateItemResponse res = ddbClient.updateItem(req);
 
 		if (!res.sdkHttpResponse().isSuccessful()) {
-			throw new Exception("Error updating game source URL: " + reelReq.reelId);
+			throw new Exception("Error updating Reel source URL: " + reelReq.reelId);
 		}
 	}
 }
