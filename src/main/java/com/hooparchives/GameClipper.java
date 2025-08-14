@@ -49,13 +49,6 @@ public class GameClipper extends Clipper implements RequestHandler<SQSEvent, Voi
 				context.getLogger().log("[Clipper] Downloading video: " + downloadsPath.toString());
 				s3TransferManager.downloadFile(downloadsPath, req.key);
 
-				// update game thumbnail
-				String thumbnailFilename = this.thumbnailPrefix + req.gameId + ".jpg";
-				Path thumbnailPath = createThumbnail(this.downloadsPathname, req.key, this.downloadsPathname,
-						thumbnailFilename);
-				String thumbnailUrl = s3TransferManager.upload(thumbnailPath, thumbnailFilename, context);
-				ddb.setGameThumbnailUrl(req, thumbnailUrl);
-
 				// process clips
 				List<String> clipFilenames = new ArrayList<>();
 				for (int i = 0; i < req.clipRequests.size(); i++) {
@@ -71,6 +64,15 @@ public class GameClipper extends Clipper implements RequestHandler<SQSEvent, Voi
 					Path clipOutputPath = Paths.get(this.clipsPathname, clipFilename);
 					this.trimClip(downloadsPath, clipOutputPath, clip);
 					String clipUrl = s3TransferManager.upload(clipOutputPath, clipFilename, context);
+
+					if (i == 0) {
+						// update game thumbnail
+						String thumbnailFilename = this.thumbnailPrefix + req.gameId + ".jpg";
+						Path thumbnailPath = createThumbnail(this.clipsPathname, clipFilename, this.downloadsPathname,
+								thumbnailFilename);
+						String thumbnailUrl = s3TransferManager.upload(thumbnailPath, thumbnailFilename, context);
+						ddb.setGameThumbnailUrl(req, thumbnailUrl);
+					}
 
 					// create clip in ddb
 					ddb.createGameClip(req, clip, clipUrl, clipFilename);
