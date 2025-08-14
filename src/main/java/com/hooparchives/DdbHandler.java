@@ -87,7 +87,6 @@ public class DdbHandler {
 		gameClip.put("endTime", AttributeValue.fromN(clipReq.endTime.toString()));
 		gameClip.put("highlightTime", AttributeValue.fromN(clipReq.highlightTime.toString()));
 		gameClip.put("teamBeneficiary", AttributeValue.fromS(clipReq.teamBeneficiary));
-		gameClip.put("teamBeneficiary", AttributeValue.fromS(clipReq.teamBeneficiary));
 		gameClip.put("url", AttributeValue.fromS(clipUrl));
 
 		// conditional `offense` play
@@ -118,6 +117,8 @@ public class DdbHandler {
 
 			defense.put("playerDefending", AttributeValue.fromM(toAttributeValue(defensivePlay.playerDefending)));
 			defense.put("playerStopped", AttributeValue.fromM(toAttributeValue(defensivePlay.playerStopped)));
+
+			gameClip.put("defense", AttributeValue.fromM(defense));
 		}
 
 		PutItemRequest req = PutItemRequest.builder()
